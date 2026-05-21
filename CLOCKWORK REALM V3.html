@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Clockwork Realm V3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+
+/* =========================
+   CORE
+========================= */
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:system-ui;
+}
+
+body{
+overflow:hidden;
+background:#05070c;
+color:white;
+}
+
+/* =========================
+   WORLD
+========================= */
+.world{
+position:fixed;
+inset:0;
+background:
+radial-gradient(circle at center,#1f2937,#05070c);
+overflow:hidden;
+transition:0.5s;
+}
+
+/* OVERCLOCK VISUAL */
+.world.overclock{
+background:
+radial-gradient(circle at center,#1e3a8a,#05070c);
+}
+
+/* =========================
+   GEARS
+========================= */
+.gear{
+position:absolute;
+border-radius:50%;
+border:5px solid rgba(148,163,184,0.2);
+animation:spin linear infinite;
+}
+
+.gear::after{
+content:"";
+position:absolute;
+inset:15px;
+border-radius:50%;
+border:3px dashed rgba(148,163,184,0.15);
+}
+
+@keyframes spin{
+from{transform:rotate(0deg);}
+to{transform:rotate(360deg);}
+}
+
+/* =========================
+   PARTICLES
+========================= */
+.spark{
+position:absolute;
+width:6px;
+height:6px;
+background:#ef4444;
+border-radius:50%;
+animation:spark 1s linear forwards;
+}
+
+@keyframes spark{
+to{
+transform:translateY(100px);
+opacity:0;
+}
+}
+
+/* =========================
+   START
+========================= */
+.start{
+position:fixed;
+inset:0;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+background:#05070c;
+z-index:100;
+gap:18px;
+text-align:center;
+}
+
+.start h1{
+font-size:52px;
+color:#93c5fd;
+}
+
+button{
+padding:12px 24px;
+border:none;
+border-radius:10px;
+background:#60a5fa;
+font-weight:bold;
+cursor:pointer;
+}
+
+/* =========================
+   GAME UI
+========================= */
+.game{
+position:relative;
+z-index:10;
+height:100vh;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+gap:14px;
+}
+
+.panel{
+width:420px;
+min-height:140px;
+background:rgba(255,255,255,0.05);
+border:1px solid rgba(148,163,184,0.2);
+border-radius:14px;
+display:flex;
+align-items:center;
+justify-content:center;
+padding:20px;
+text-align:center;
+font-size:22px;
+transition:0.3s;
+}
+
+/* pulse */
+.panel.good{
+box-shadow:0 0 25px #3b82f6;
+}
+
+.panel.bad{
+box-shadow:0 0 25px #ef4444;
+}
+
+/* INPUT */
+input{
+width:420px;
+padding:14px;
+border:none;
+border-radius:10px;
+background:#111827;
+color:white;
+text-align:center;
+font-size:18px;
+}
+
+/* TIMER */
+.timer{
+font-size:15px;
+color:#fbbf24;
+}
+
+/* STATS */
+.stats{
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+justify-content:center;
+}
+
+.card{
+background:rgba(255,255,255,0.05);
+padding:10px 14px;
+border-radius:10px;
+}
+
+/* HINT */
+.hint{
+font-size:13px;
+color:#93c5fd;
+cursor:pointer;
+}
+
+/* OVERCLOCK */
+.overclockText{
+display:none;
+font-size:20px;
+color:#60a5fa;
+font-weight:bold;
+}
+
+/* GAME OVER */
+.over{
+position:fixed;
+inset:0;
+display:none;
+justify-content:center;
+align-items:center;
+flex-direction:column;
+background:black;
+z-index:200;
+gap:20px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="world" id="world"></div>
+
+<!-- MANY GEARS -->
+<script>
+for(let i=0;i<50;i++){
+document.write(`
+<div class="gear"
+style="
+width:${60+Math.random()*160}px;
+height:${60+Math.random()*160}px;
+left:${Math.random()*100}vw;
+top:${Math.random()*100}vh;
+animation-duration:${4+Math.random()*12}s;
+"></div>
+`);
+}
+</script>
+
+<!-- START -->
+<div class="start" id="start">
+<h1>CLOCKWORK REALM V3</h1>
+<p>The living machine is unstable.</p>
+<button onclick="startGame()">ENTER SYSTEM</button>
+</div>
+
+<!-- GAME -->
+<div class="game">
+
+<div class="panel" id="panel">
+Initializing...
+</div>
+
+<div class="timer">
+Time Left:
+<span id="time">10</span>s
+</div>
+
+<input id="input" placeholder="repair the system..." />
+
+<div class="hint" onclick="showHint()">
+Need machine assistance?
+</div>
+
+<div class="overclockText" id="overclockText">
+OVERCLOCK MODE ACTIVE
+</div>
+
+<div class="stats">
+<div class="card">Score: <span id="score">0</span></div>
+<div class="card">Stress: <span id="stress">0</span></div>
+<div class="card">Level: <span id="level">1</span></div>
+<div class="card">Combo: <span id="combo">0</span></div>
+</div>
+
+</div>
+
+<!-- GAME OVER -->
+<div class="over" id="over">
+<h1>Machine Collapse</h1>
+<button onclick="location.reload()">Restart</button>
+</div>
+
+<script>
+
+/* =========================
+   STATE
+========================= */
+let score=0;
+let stress=0;
+let level=1;
+let combo=0;
+
+let answer="";
+let hint="";
+
+let time=10;
+let timer;
+
+/* =========================
+   EQUATION TYPES
+========================= */
+const questions=[
+
+{
+q:"(12×4)+6=?",
+a:"54",
+h:"Multiply before adding.",
+t:10
+},
+
+{
+q:"x=6 → x²+3x=?",
+a:"54",
+h:"Square first.",
+t:9
+},
+
+{
+q:"2,4,8,16,?",
+a:"32",
+h:"Pattern doubles.",
+t:7
+},
+
+{
+q:"(100÷5)+(6×8)=?",
+a:"68",
+h:"Division and multiplication first.",
+t:8
+},
+
+{
+q:"x=7 → x²-x=?",
+a:"42",
+h:"49 minus 7.",
+t:8
+}
+
+];
+
+/* =========================
+   NEW QUESTION
+========================= */
+function newQ(){
+
+clearInterval(timer);
+
+let q=questions[Math.floor(Math.random()*questions.length)];
+
+document.getElementById("panel").innerText=
+"SYSTEM FAILURE: "+q.q;
+
+answer=q.a;
+hint=q.h;
+
+time=q.t;
+
+document.getElementById("time").innerText=time;
+
+/* timer */
+timer=setInterval(()=>{
+
+time--;
+
+document.getElementById("time").innerText=time;
+
+if(time<=0){
+
+stress++;
+
+updateUI();
+
+createSparks();
+
+nextQ();
+}
+
+},1000);
+
+}
+
+/* =========================
+   NEXT
+========================= */
+function nextQ(){
+
+clearInterval(timer);
+
+if(stress>=7){
+document.getElementById("over").style.display="flex";
+return;
+}
+
+newQ();
+}
+
+/* =========================
+   START
+========================= */
+function startGame(){
+
+document.getElementById("start").style.display="none";
+
+newQ();
+
+}
+
+/* =========================
+   INPUT
+========================= */
+document.getElementById("input")
+.addEventListener("keydown",(e)=>{
+
+if(e.key==="Enter"){
+
+let val=e.target.value.trim();
+
+if(val===answer){
+
+score+=10;
+combo++;
+level++;
+
+stress=Math.max(0,stress-1);
+
+document.getElementById("panel")
+.classList.add("good");
+
+setTimeout(()=>{
+document.getElementById("panel")
+.classList.remove("good");
+},300);
+
+/* overclock */
+if(combo>=5){
+document.getElementById("world")
+.classList.add("overclock");
+
+document.getElementById("overclockText")
+.style.display="block";
+}
+
+/* time freeze reward */
+time+=2;
+
+}else{
+
+combo=0;
+stress++;
+
+document.getElementById("world")
+.classList.remove("overclock");
+
+document.getElementById("overclockText")
+.style.display="none";
+
+document.getElementById("panel")
+.classList.add("bad");
+
+setTimeout(()=>{
+document.getElementById("panel")
+.classList.remove("bad");
+},300);
+
+createSparks();
+}
+
+updateUI();
+
+e.target.value="";
+
+nextQ();
+
+}
+
+});
+
+/* =========================
+   UPDATE UI
+========================= */
+function updateUI(){
+
+document.getElementById("score").innerText=score;
+document.getElementById("stress").innerText=stress;
+document.getElementById("level").innerText=level;
+document.getElementById("combo").innerText=combo;
+
+}
+
+/* =========================
+   HINT SYSTEM
+========================= */
+function showHint(){
+
+alert("Machine Hint:\n\n"+hint);
+
+window.open(
+"https://www.wolframalpha.com/",
+"_blank"
+);
+
+}
+
+/* =========================
+   SPARK EFFECTS
+========================= */
+function createSparks(){
+
+for(let i=0;i<12;i++){
+
+let s=document.createElement("div");
+
+s.className="spark";
+
+s.style.left=(40+Math.random()*20)+"vw";
+s.style.top=(40+Math.random()*20)+"vh";
+
+document.body.appendChild(s);
+
+setTimeout(()=>{
+s.remove();
+},1000);
+
+}
+
+}
+
+</script>
+
+</body>
+</html>
